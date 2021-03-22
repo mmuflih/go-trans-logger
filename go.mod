@@ -1,4 +1,4 @@
-module github.com/mmuflih/transaction-logger
+module github.com/mmuflih/go-trans-logger
 
 go 1.16
 

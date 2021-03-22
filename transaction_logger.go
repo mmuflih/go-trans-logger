@@ -18,6 +18,8 @@ import (
 
 type TransactionLog interface {
 	WriteLog(data *TrsLogData)
+	ReadLog(query map[string]interface{},
+		showDataBefore, showDataAfter bool) ([]*TrsLog, error)
 }
 
 type transLog struct {
@@ -25,11 +27,12 @@ type transLog struct {
 }
 
 func NewTransactionLog(db *mgo.Database) TransactionLog {
+	fmt.Println("======+++> Initial Transaction LOG")
 	return &transLog{db.C("transaction_logs")}
 }
 
 func (tl transLog) getLastID() int64 {
-	sl := new(trsLog)
+	sl := new(TrsLog)
 	err := tl.col.Find(nil).Sort("-id").One(&sl)
 	if err != nil {
 		return 1
@@ -38,7 +41,7 @@ func (tl transLog) getLastID() int64 {
 }
 
 func (t transLog) WriteLog(data *TrsLogData) {
-	tl := &trsLog{
+	tl := &TrsLog{
 		ID:       t.getLastID(),
 		UserID:   data.UserID,
 		RefType:  data.RefType,
@@ -56,6 +59,28 @@ func (t transLog) WriteLog(data *TrsLogData) {
 	}
 }
 
+func (t transLog) ReadLog(query map[string]interface{},
+	showDataBefore, showDataAfter bool) ([]*TrsLog, error) {
+	var items []*TrsLog
+	err := t.col.Find(query).All(&items)
+	if err != nil {
+		return nil, err
+	}
+
+	var newItems []*TrsLog
+	for _, d := range items {
+		if !showDataBefore {
+			d.OldValue = nil
+		}
+		if !showDataAfter {
+			d.NewValue = nil
+		}
+		d.ActionDateAt = time.Unix(d.ActionAt, 0)
+		newItems = append(newItems, d)
+	}
+	return newItems, nil
+}
+
 type TrsLogData struct {
 	UserID   int64
 	RefType  string
@@ -65,14 +90,15 @@ type TrsLogData struct {
 	NewValue interface{}
 }
 
-type trsLog struct {
-	MID      bson.ObjectId `bson:"_id,omitempty" json:"_id,omitempty"`
-	ID       int64         `bson:"id" json:"id"`
-	UserID   int64         `bson:"user_id" json:"user_id"`
-	RefType  string        `bson:"ref_type" json:"ref_type"`
-	RefID    interface{}   `bson:"ref_id" json:"ref_id"`
-	Action   string        `bson:"action" json:"action"`
-	OldValue interface{}   `bson:"old_value" json:"old_value"`
-	NewValue interface{}   `bson:"new_value" json:"new_value"`
-	ActionAt int64         `bson:"action_at" json:"action_at"`
+type TrsLog struct {
+	MID          bson.ObjectId `bson:"_id,omitempty" json:"_id,omitempty"`
+	ID           int64         `bson:"id" json:"id"`
+	UserID       int64         `bson:"user_id" json:"user_id"`
+	RefType      string        `bson:"ref_type" json:"ref_type"`
+	RefID        interface{}   `bson:"ref_id" json:"ref_id"`
+	Action       string        `bson:"action" json:"action"`
+	OldValue     interface{}   `bson:"old_value" json:"old_value"`
+	NewValue     interface{}   `bson:"new_value" json:"new_value"`
+	ActionAt     int64         `bson:"action_at" json:"action_at"`
+	ActionDateAt time.Time     `bson:"-" json:"action_data_at"`
 }
