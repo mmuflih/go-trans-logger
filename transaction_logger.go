@@ -18,8 +18,7 @@ import (
 
 type TransactionLog interface {
 	WriteLog(data *TrsLogData)
-	ReadLog(query map[string]interface{},
-		showDataBefore, showDataAfter bool) ([]*TrsLog, error)
+	ReadLog(query map[string]interface{}) ([]*TrsLog, error)
 }
 
 type transLog struct {
@@ -47,8 +46,8 @@ func (t transLog) WriteLog(data *TrsLogData) {
 		RefType:  data.RefType,
 		RefID:    data.RefID,
 		Action:   data.Action,
-		OldValue: data.OldValue,
 		NewValue: data.NewValue,
+		Details:  data.Details,
 		ActionAt: time.Now().Unix(),
 	}
 
@@ -59,8 +58,7 @@ func (t transLog) WriteLog(data *TrsLogData) {
 	}
 }
 
-func (t transLog) ReadLog(query map[string]interface{},
-	showDataBefore, showDataAfter bool) ([]*TrsLog, error) {
+func (t transLog) ReadLog(query map[string]interface{}) ([]*TrsLog, error) {
 	var items []*TrsLog
 	err := t.col.Find(query).All(&items)
 	if err != nil {
@@ -69,12 +67,6 @@ func (t transLog) ReadLog(query map[string]interface{},
 
 	var newItems []*TrsLog
 	for _, d := range items {
-		if !showDataBefore {
-			d.OldValue = nil
-		}
-		if !showDataAfter {
-			d.NewValue = nil
-		}
 		d.ActionDateAt = time.Unix(d.ActionAt, 0)
 		newItems = append(newItems, d)
 	}
@@ -86,8 +78,8 @@ type TrsLogData struct {
 	RefType  string
 	RefID    interface{}
 	Action   string
-	OldValue interface{}
 	NewValue interface{}
+	Details  interface{}
 }
 
 type TrsLog struct {
@@ -97,8 +89,8 @@ type TrsLog struct {
 	RefType      string        `bson:"ref_type" json:"ref_type"`
 	RefID        interface{}   `bson:"ref_id" json:"ref_id"`
 	Action       string        `bson:"action" json:"action"`
-	OldValue     interface{}   `bson:"old_value" json:"old_value"`
 	NewValue     interface{}   `bson:"new_value" json:"new_value"`
+	Details      interface{}   `bson:"details" json:"details"`
 	ActionAt     int64         `bson:"action_at" json:"action_at"`
 	ActionDateAt time.Time     `bson:"-" json:"action_data_at"`
 }
