@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	mgopaginator "github.com/mmuflih/mgo-paginator"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 )
@@ -19,6 +20,7 @@ import (
 type TransactionLog interface {
 	WriteLog(data *TrsLogData)
 	ReadLog(query map[string]interface{}) ([]*TrsLog, error)
+	Logs(query map[string]interface{}, page, size int) *mgopaginator.PaginatorResponse
 }
 
 type transLog struct {
@@ -73,6 +75,28 @@ func (t transLog) ReadLog(query map[string]interface{}) ([]*TrsLog, error) {
 	return newItems, nil
 }
 
+func (t transLog) Logs(query map[string]interface{}, page, size int) *mgopaginator.PaginatorResponse {
+	var items []*TrsLog
+	qu := t.col.Find(query)
+
+	paginate := mgopaginator.Paginator{
+		Query: qu,
+		Page:  page,
+		Size:  size,
+		Sort:  "-action_at",
+	}
+
+	resp := paginate.Paginate(&items)
+
+	var newItems []*TrsLog
+	for _, d := range items {
+		d.ActionDateAt = time.Unix(d.ActionAt, 0)
+		newItems = append(newItems, d)
+	}
+
+	return resp
+}
+
 type TrsLogData struct {
 	UserID   int64
 	RefType  string
@@ -92,5 +116,5 @@ type TrsLog struct {
 	NewValue     interface{}   `bson:"new_value" json:"new_value"`
 	Details      interface{}   `bson:"details" json:"details"`
 	ActionAt     int64         `bson:"action_at" json:"action_at"`
-	ActionDateAt time.Time     `bson:"-" json:"action_data_at"`
+	ActionDateAt time.Time     `bson:"-" json:"action_date_at"`
 }
