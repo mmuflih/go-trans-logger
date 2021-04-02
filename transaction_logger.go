@@ -21,6 +21,7 @@ type TransactionLog interface {
 	WriteLog(data *TrsLogData)
 	ReadLog(query map[string]interface{}) ([]*TrsLog, error)
 	Logs(query map[string]interface{}, page, size int) *mgopaginator.PaginatorResponse
+	GetType() []bson.M
 }
 
 type transLog struct {
@@ -93,8 +94,25 @@ func (t transLog) Logs(query map[string]interface{}, page, size int) *mgopaginat
 		d.ActionDateAt = time.Unix(d.ActionAt, 0)
 		newItems = append(newItems, d)
 	}
+	resp.Data = newItems
 
 	return resp
+}
+
+func (t transLog) GetType() []bson.M {
+	items := []bson.M{}
+	pipeline := []bson.M{
+		{
+			"$group": bson.M{"_id": "$ref_type"},
+		},
+	}
+	err := t.col.Pipe(pipeline).All(&items)
+	if err != nil {
+		fmt.Println(err)
+		return nil
+	}
+
+	return items
 }
 
 type TrsLogData struct {
