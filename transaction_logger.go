@@ -19,7 +19,7 @@ import (
 
 type TransactionLog interface {
 	WriteLog(data *TrsLogData)
-	ReadLog(query map[string]interface{}) ([]*TrsLog, error)
+	ReadLog(query map[string]interface{}, limit int) ([]*TrsLog, error)
 	Logs(query map[string]interface{}, page, size int) *mgopaginator.PaginatorResponse
 	GetType() []bson.M
 }
@@ -61,9 +61,12 @@ func (t transLog) WriteLog(data *TrsLogData) {
 	}
 }
 
-func (t transLog) ReadLog(query map[string]interface{}) ([]*TrsLog, error) {
+func (t transLog) ReadLog(query map[string]interface{}, limit int) ([]*TrsLog, error) {
 	var items []*TrsLog
-	err := t.col.Find(query).All(&items)
+	err := t.col.Find(query).
+		Sort("-action_at").
+		Limit(limit).
+		All(&items)
 	if err != nil {
 		return nil, err
 	}
