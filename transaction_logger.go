@@ -45,7 +45,7 @@ func (tl transLog) getLastID() int64 {
 func (t transLog) WriteLog(data *TrsLogData) {
 	tl := &TrsLog{
 		ID:       t.getLastID(),
-		UserID:   data.UserID,
+		User:     data.User,
 		RefType:  data.RefType,
 		RefID:    data.RefID,
 		Action:   data.Action,
@@ -119,7 +119,7 @@ func (t transLog) GetType() []bson.M {
 }
 
 type TrsLogData struct {
-	UserID   int64
+	User     interface{}
 	RefType  string
 	RefID    interface{}
 	Action   string
@@ -130,7 +130,7 @@ type TrsLogData struct {
 type TrsLog struct {
 	MID          bson.ObjectId `bson:"_id,omitempty" json:"_id,omitempty"`
 	ID           int64         `bson:"id" json:"id"`
-	UserID       int64         `bson:"user_id" json:"user_id"`
+	User         interface{}   `bson:"user_id" json:"user_id"`
 	RefType      string        `bson:"ref_type" json:"ref_type"`
 	RefID        interface{}   `bson:"ref_id" json:"ref_id"`
 	Action       string        `bson:"action" json:"action"`
