@@ -1,13 +1,16 @@
 package trslog
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
-	mgopaginator "github.com/mmuflih/mgo-paginator"
-	"gopkg.in/mgo.v2"
-	"gopkg.in/mgo.v2/bson"
+	"github.com/mmuflih/go-trans-logger/paginator"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 /**
@@ -19,23 +22,25 @@ import (
 
 type TransactionLog interface {
 	WriteLog(data *TrsLogData)
-	ReadLog(query map[string]interface{}, limit int) ([]*TrsLog, error)
-	Logs(query map[string]interface{}, page, size int) *mgopaginator.PaginatorResponse
+	ReadLog(query map[string]interface{}, limit int64) ([]*TrsLog, error)
+	Logs(query primitive.D, page, size int) (*paginator.PaginatorResponse, error)
 	GetType() []bson.M
 }
 
 type transLog struct {
-	col *mgo.Collection
+	col *mongo.Collection
 }
 
-func NewTransactionLog(db *mgo.Database) TransactionLog {
+func NewTransactionLog(db *mongo.Database) TransactionLog {
 	fmt.Println("======+++> Initial Transaction LOG")
-	return &transLog{db.C("transaction_logs")}
+	return &transLog{db.Collection("transaction_logs")}
 }
 
 func (tl transLog) getLastID() int64 {
 	sl := new(TrsLog)
-	err := tl.col.Find(nil).Sort("-id").One(&sl)
+	sort := bson.D{{Key: "id", Value: -1}}
+	fo := options.FindOne().SetSort(sort)
+	err := tl.col.FindOne(context.TODO(), bson.M{}, fo).Decode(&sl)
 	if err != nil {
 		return 1
 	}
@@ -54,20 +59,25 @@ func (t transLog) WriteLog(data *TrsLogData) {
 		ActionAt: time.Now().Unix(),
 	}
 
-	err := t.col.Insert(tl)
+	_, err := t.col.InsertOne(context.TODO(), tl)
 	if err != nil {
 		jsonData, _ := json.Marshal(tl)
 		fmt.Println("Error inserting log data => ", string(jsonData))
 	}
 }
 
-func (t transLog) ReadLog(query map[string]interface{}, limit int) ([]*TrsLog, error) {
+func (t transLog) ReadLog(query map[string]interface{}, limit int64) ([]*TrsLog, error) {
 	var items []*TrsLog
-	err := t.col.Find(query).
-		Sort("-action_at").
-		Limit(limit).
-		All(&items)
+	sort := bson.D{{Key: "action_at", Value: -1}}
+	fo := options.Find().SetSort(sort).SetLimit(limit)
+	cursor, err := t.col.Find(context.TODO(), query, fo)
 	if err != nil {
+		return nil, err
+	}
+
+	defer cursor.Close(context.TODO())
+	if err := cursor.All(context.TODO(), &items); err != nil {
+		fmt.Println("Error decoding documents:", err)
 		return nil, err
 	}
 
@@ -79,18 +89,18 @@ func (t transLog) ReadLog(query map[string]interface{}, limit int) ([]*TrsLog, e
 	return newItems, nil
 }
 
-func (t transLog) Logs(query map[string]interface{}, page, size int) *mgopaginator.PaginatorResponse {
+func (t transLog) Logs(query primitive.D, page, size int) (*paginator.PaginatorResponse, error) {
 	var items []*TrsLog
-	qu := t.col.Find(query)
 
-	paginate := mgopaginator.Paginator{
-		Query: qu,
-		Page:  page,
-		Size:  size,
-		Sort:  "-action_at",
+	paginate := paginator.MPaginator{
+		Collection: &mongo.Collection{},
+		Filter:     query,
+		Page:       0,
+		Size:       0,
+		Sort:       map[string]int{"action_at": -1},
 	}
 
-	resp := paginate.Paginate(&items)
+	resp, _ := paginate.GetPaginator(context.TODO(), &items)
 
 	var newItems []*TrsLog
 	for _, d := range items {
@@ -99,7 +109,7 @@ func (t transLog) Logs(query map[string]interface{}, page, size int) *mgopaginat
 	}
 	resp.Data = newItems
 
-	return resp
+	return resp, nil
 }
 
 func (t transLog) GetType() []bson.M {
@@ -109,7 +119,14 @@ func (t transLog) GetType() []bson.M {
 			"$group": bson.M{"_id": "$ref_type"},
 		},
 	}
-	err := t.col.Pipe(pipeline).All(&items)
+	cursor, err := t.col.Aggregate(context.TODO(), pipeline)
+	if err != nil {
+		fmt.Println(err)
+		return nil
+	}
+	defer cursor.Close(context.TODO())
+
+	err = cursor.All(context.TODO(), &items)
 	if err != nil {
 		fmt.Println(err)
 		return nil
@@ -128,14 +145,14 @@ type TrsLogData struct {
 }
 
 type TrsLog struct {
-	MID          bson.ObjectId `bson:"_id,omitempty" json:"_id,omitempty"`
-	ID           int64         `bson:"id" json:"id"`
-	User         interface{}   `bson:"user_id" json:"user_id"`
-	RefType      string        `bson:"ref_type" json:"ref_type"`
-	RefID        interface{}   `bson:"ref_id" json:"ref_id"`
-	Action       string        `bson:"action" json:"action"`
-	NewValue     interface{}   `bson:"new_value" json:"new_value"`
-	Details      interface{}   `bson:"details" json:"details"`
-	ActionAt     int64         `bson:"action_at" json:"action_at"`
-	ActionDateAt time.Time     `bson:"-" json:"action_date_at"`
+	MID          primitive.ObjectID `bson:"_id,omitempty" json:"_id,omitempty"`
+	ID           int64              `bson:"id" json:"id"`
+	User         interface{}        `bson:"user_id" json:"user_id"`
+	RefType      string             `bson:"ref_type" json:"ref_type"`
+	RefID        interface{}        `bson:"ref_id" json:"ref_id"`
+	Action       string             `bson:"action" json:"action"`
+	NewValue     interface{}        `bson:"new_value" json:"new_value"`
+	Details      interface{}        `bson:"details" json:"details"`
+	ActionAt     int64              `bson:"action_at" json:"action_at"`
+	ActionDateAt time.Time          `bson:"-" json:"action_date_at"`
 }
